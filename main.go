@@ -52,43 +52,52 @@ func handleError(err error) {
 	}
 }
 
-//simple server methods
+// simple server methods
 func (s *simpleServer) Address() string {
-    return s.address
+	return s.address
 }
 
 func (s *simpleServer) IsAlive() bool {
-    _, err := http.Get(s.address)
-    return err == nil 
+	_, err := http.Get(s.address)
+	return err == nil
 }
 
 func (s *simpleServer) Serve(w http.ResponseWriter, r *http.Request) {
-    s.proxy.ServeHTTP(w, r)
+	s.proxy.ServeHTTP(w, r)
 }
 
 func (lb *LoadBalancer) getNextAvailableServer() Server {
+	server := lb.servers[lb.roundRobinCount%len(lb.servers)]
+	for !server.IsAlive() {
+		lb.roundRobinCount++
+		server = lb.servers[lb.roundRobinCount%len(lb.servers)]
+	}
+	lb.roundRobinCount++
 
+	return server
 }
 
 func (lb *LoadBalancer) serveProxy(w http.ResponseWriter, r *http.Request) {
-
+	targetServer := lb.getNextAvailableServer()
+	fmt.Printf("forwarding request to address %q\n", targetServer.Address())
+	targetServer.Serve(w, r)
 }
 
-func main(){
+func main() {
 	server1 := newSimpleServer("http://www.google.com")
-    server2 := newSimpleServer("https://www.facebook.com")
+	server2 := newSimpleServer("https://www.facebook.com")
 	server3 := newSimpleServer("http://www.bing.com")
 
-    servers := []Server{server1, server2, server3}
+	servers := []Server{server1, server2, server3}
 
 	// Create a new load balancer with servers and start the server
-    lb := NewLoadBalancer(8000, servers)
+	lb := NewLoadBalancer(8000, servers)
 	handleRedirect := func(w http.ResponseWriter, r *http.Request) {
 		lb.serveProxy(w, r)
 	}
-    http.HandleFunc("/", handleRedirect)
+	http.HandleFunc("/", handleRedirect)
 
-    fmt.Printf("Starting server on port %d...", lb.port)
-    err := http.ListenAndServe(":8000", nil)
-    handleError(err)
+	fmt.Printf("Starting server on port %q...", lb.port)
+	err := http.ListenAndServe(":8000", nil)
+	handleError(err)
 }
