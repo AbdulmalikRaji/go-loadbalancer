@@ -19,6 +19,20 @@ type simpleServer struct {
 	proxy   *httputil.ReverseProxy
 }
 
+// simple server methods
+func (s *simpleServer) Address() string {
+	return s.address
+}
+
+func (s *simpleServer) IsAlive() bool {
+	_, err := http.Get(s.address)
+	return err == nil
+}
+
+func (s *simpleServer) Serve(w http.ResponseWriter, r *http.Request) {
+	s.proxy.ServeHTTP(w, r)
+}
+
 func newSimpleServer(address string) *simpleServer {
 
 	serverUrl, err := url.Parse(address)
@@ -32,12 +46,12 @@ func newSimpleServer(address string) *simpleServer {
 }
 
 type LoadBalancer struct {
-	port            int
+	port            string
 	roundRobinCount int
 	servers         []Server
 }
 
-func NewLoadBalancer(port int, servers []Server) *LoadBalancer {
+func NewLoadBalancer(port string, servers []Server) *LoadBalancer {
 	return &LoadBalancer{
 		port:            port,
 		roundRobinCount: 0,
@@ -50,20 +64,6 @@ func handleError(err error) {
 		fmt.Println("Error: ", err)
 		os.Exit(1)
 	}
-}
-
-// simple server methods
-func (s *simpleServer) Address() string {
-	return s.address
-}
-
-func (s *simpleServer) IsAlive() bool {
-	_, err := http.Get(s.address)
-	return err == nil
-}
-
-func (s *simpleServer) Serve(w http.ResponseWriter, r *http.Request) {
-	s.proxy.ServeHTTP(w, r)
 }
 
 func (lb *LoadBalancer) getNextAvailableServer() Server {
@@ -85,19 +85,19 @@ func (lb *LoadBalancer) serveProxy(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	server1 := newSimpleServer("http://www.google.com")
-	server2 := newSimpleServer("https://www.facebook.com")
-	server3 := newSimpleServer("http://www.bing.com")
+	server2 := newSimpleServer("https://www.facebook.com/")
+	server3 := newSimpleServer("http://www.bing.com/")
 
-	servers := []Server{server1, server2, server3}
+	servers := []Server{server2, server1, server3}
 
 	// Create a new load balancer with servers and start the server
-	lb := NewLoadBalancer(8000, servers)
+	lb := NewLoadBalancer("8000", servers)
 	handleRedirect := func(w http.ResponseWriter, r *http.Request) {
 		lb.serveProxy(w, r)
 	}
 	http.HandleFunc("/", handleRedirect)
 
-	fmt.Printf("Starting server on port %q...", lb.port)
-	err := http.ListenAndServe(":8000", nil)
+	fmt.Printf("Starting server on port %s...", lb.port)
+	err := http.ListenAndServe(":"+lb.port, nil)
 	handleError(err)
 }
